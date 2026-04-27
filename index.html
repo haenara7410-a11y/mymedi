@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>스마트 약 복용 알림이</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: #f8fafc; -webkit-tap-highlight-color: transparent; }
+        .card { background: white; border-radius: 1.5rem; box-shadow: 0 4px 20px rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.05); }
+        .pill-anim { animation: float 3s ease-in-out infinite; }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 100; padding: 1rem; backdrop-filter: blur(5px); }
+        .modal.active { display: flex; }
+        .preset-btn { transition: all 0.2s; border: 2px solid transparent; background: #fff; }
+        .preset-btn.selected { border-color: #4f46e5; background-color: #eef2ff; color: #4f46e5; font-weight: bold; }
+        .time-badge { background: #f1f5f9; color: #64748b; font-size: 0.75rem; padding: 2px 8px; border-radius: 6px; font-weight: 600; }
+        .done-card { background-color: #f8fafc; border-left: 4px solid #10b981 !important; opacity: 0.8; }
+    </style>
+</head>
+<body class="pb-10">
+
+    <!-- 상단 카카오 상태바 -->
+    <div id="kakao-status-bar" class="bg-slate-800 text-white text-center py-4 text-sm font-bold cursor-pointer shadow-lg sticky top-0 z-50 transition-all duration-300" onclick="loginWithKakao()">
+        <div class="flex items-center justify-center gap-2">
+            <i id="kakao-icon" class="fa-solid fa-spinner fa-spin text-yellow-400"></i>
+            <span id="kakao-status-text">카카오 준비 중...</span>
+        </div>
+    </div>
+
+    <div class="max-w-md mx-auto px-4 pt-6">
+        <div class="flex items-center justify-between mb-8">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800">나의 약 상자 💊</h1>
+                <p class="text-slate-500 text-sm" id="today-date">로딩 중...</p>
+            </div>
+            <div class="bg-white p-3 rounded-2xl shadow-sm pill-anim">
+                <i class="fa-solid fa-capsules text-3xl text-indigo-500"></i>
+            </div>
+        </div>
+
+        <!-- 다음 복용 카드 -->
+        <div id="next-reminder-card" class="card p-6 mb-8 bg-indigo-600 text-white shadow-xl relative overflow-hidden">
+            <div class="relative z-10">
+                <h2 class="text-indigo-100 text-sm font-medium">다음 복용 예정</h2>
+                <div id="next-reminder-text" class="mt-2">
+                    <span class="text-2xl font-bold italic">등록된 약이 없습니다</span>
+                </div>
+            </div>
+            <i class="fa-solid fa-clock absolute -right-4 -bottom-4 text-8xl opacity-10"></i>
+        </div>
+
+        <div class="flex items-center justify-between mb-4 px-1">
+            <h3 class="text-lg font-bold text-slate-800">복용 리스트</h3>
+            <button onclick="openModal('add-modal')" class="bg-white text-indigo-600 border border-indigo-100 px-4 py-2 rounded-xl font-bold text-sm shadow-sm active:scale-95 transition-all">
+                <i class="fa-solid fa-plus mr-1"></i> 추가
+            </button>
+        </div>
+
+        <div id="medication-list" class="space-y-4"></div>
+    </div>
+
+    <!-- 약 추가 모달 -->
+    <div id="add-modal" class="modal">
+        <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+            <div class="flex justify-between items-center mb-5">
+                <h2 class="text-xl font-bold text-slate-800">새 약 등록</h2>
+                <button onclick="closeModal('add-modal')" class="text-slate-400 p-1"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 mb-2 uppercase">빠른 시간 선택</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="setPresetTime('08:00', this)" class="preset-btn py-2 rounded-xl text-xs text-slate-600 border border-slate-100">아침 (08:00)</button>
+                        <button onclick="setPresetTime('13:00', this)" class="preset-btn py-2 rounded-xl text-xs text-slate-600 border border-slate-100">점심 (13:00)</button>
+                        <button onclick="setPresetTime('19:00', this)" class="preset-btn py-2 rounded-xl text-xs text-slate-600 border border-slate-100">저녁 (19:00)</button>
+                        <button onclick="setPresetTime('22:00', this)" class="preset-btn py-2 rounded-xl text-xs text-slate-600 border border-slate-100">취침전 (22:00)</button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">약 이름</label>
+                    <input type="text" id="pill-name" placeholder="예: 비타민C" class="w-full p-4 bg-slate-50 rounded-xl outline-none border-2 border-transparent focus:border-indigo-500 transition-all">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">시간 설정</label>
+                    <input type="time" id="pill-time" class="w-full p-4 bg-slate-50 rounded-xl outline-none border-2 border-transparent focus:border-indigo-500 transition-all">
+                </div>
+                <button onclick="addMedication()" class="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg active:scale-95 transition-all">등록 완료</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 알람 모달 -->
+    <div id="alarm-modal" class="modal">
+        <div class="bg-white rounded-3xl p-8 w-full max-w-sm text-center shadow-2xl border border-indigo-50">
+            <div class="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i class="fa-solid fa-bell text-4xl text-indigo-500 animate-bounce"></i>
+            </div>
+            <h2 class="text-xl font-bold text-slate-800 mb-2">약 드실 시간입니다!</h2>
+            <p id="alarm-pill-name" class="text-2xl text-indigo-600 font-extrabold mb-8"></p>
+            <div class="space-y-3">
+                <button onclick="confirmIntake()" class="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg shadow-lg active:scale-95 transition-all">복용 확인 (카톡 전송)</button>
+                <button onclick="closeModal('alarm-modal')" class="w-full py-4 bg-slate-100 text-slate-500 rounded-2xl font-medium active:scale-95 transition-all">나중에 알림</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Kakao SDK 1.x (Stable) -->
+    <script src="https://developers.kakao.com/sdk/js/kakao.min.js"></script>
+
+    <script>
+        // 1. 여기에 자신의 JavaScript 키를 넣으세요
+        const KAKAO_JS_KEY = '4f5a3cc43665c77a32020dbcdfff6b30'; 
+        
+        let medications = [];
+        let isKakaoLinked = false;
+        let currentAlarmMed = null;
+
+        function initKakao() {
+            if (typeof Kakao !== 'undefined') {
+                try {
+                    if (!Kakao.isInitialized()) {
+                        Kakao.init(KAKAO_JS_KEY);
+                    }
+                    document.getElementById('kakao-icon').className = 'fa-solid fa-comment text-yellow-400';
+                    document.getElementById('kakao-status-text').innerText = '카카오톡 알림 연결하기 (클릭)';
+                    
+                    if (Kakao.Auth.getAccessToken()) {
+                        isKakaoLinked = true;
+                        updateKakaoUI(true);
+                    }
+                } catch (e) {
+                    console.error("Kakao Init Fail:", e);
+                    document.getElementById('kakao-status-text').innerText = "카카오 설정 오류 (키 확인)";
+                }
+            } else {
+                setTimeout(initKakao, 500);
+            }
+        }
+
+        function loginWithKakao() {
+            if (typeof Kakao === 'undefined' || !Kakao.Auth) return;
+
+            // 로컬 파일 실행(file://) 체크
+            if (window.location.protocol === 'file:') {
+                alert("⚠️ 에러 알림\n내 컴퓨터의 파일(file://)을 직접 실행하면 카카오 로그인이 작동하지 않을 수 있습니다.\n\n해결 방법: 구글 크롬 등의 'Artifacts' 미리보기 화면에서 시도하거나, 웹 서버에 올린 후 시도해 주세요.");
+                return;
+            }
+
+            try {
+                Kakao.Auth.login({
+                    success: function(authObj) {
+                        isKakaoLinked = true;
+                        updateKakaoUI(true);
+                        alert("🎉 카카오 연결 성공!");
+                    },
+                    fail: function(err) {
+                        console.error("Login Fail", err);
+                        alert("로그인 실패: 다음을 확인하세요.\n1. Redirect URI 등록 여부\n2. 플랫폼 설정에 현재 주소 추가\n3. 팝업 차단 해제");
+                    },
+                    scope: 'talk_message'
+                });
+            } catch (err) {
+                console.error("Login attempt failed:", err);
+            }
+        }
+
+        function updateKakaoUI(linked) {
+            const bar = document.getElementById('kakao-status-bar');
+            const icon = document.getElementById('kakao-icon');
+            const text = document.getElementById('kakao-status-text');
+            if(linked) {
+                bar.className = "bg-yellow-400 text-slate-900 text-center py-4 text-sm font-bold shadow-lg sticky top-0 z-50";
+                icon.className = 'fa-solid fa-circle-check text-green-600 text-lg';
+                text.innerText = '카카오 알림 활성화됨';
+            }
+        }
+
+        function initApp() {
+            const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('today-date').innerText = new Date().toLocaleDateString('ko-KR', dateOptions);
+            const savedData = localStorage.getItem('smart_meds_data');
+            if (savedData) medications = JSON.parse(savedData);
+            renderList();
+            updateNextReminderUI();
+            initKakao();
+            setInterval(checkAlarms, 10000);
+        }
+
+        function setPresetTime(time, btn) {
+            document.getElementById('pill-time').value = time;
+            document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+        }
+
+        function openModal(id) { document.getElementById(id).classList.add('active'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+        function addMedication() {
+            const name = document.getElementById('pill-name').value.trim();
+            const time = document.getElementById('pill-time').value;
+            if (!name || !time) return alert("정보를 모두 입력해 주세요.");
+            medications.push({ id: Date.now(), name, time, lastNotified: null });
+            saveData();
+            closeModal('add-modal');
+        }
+
+        function saveData() {
+            localStorage.setItem('smart_meds_data', JSON.stringify(medications));
+            renderList();
+            updateNextReminderUI();
+        }
+
+        function renderList() {
+            const container = document.getElementById('medication-list');
+            if(!container) return;
+            container.innerHTML = '';
+            const todayStr = new Date().toLocaleDateString('en-CA');
+            if (medications.length === 0) {
+                container.innerHTML = '<div class="text-center py-12 text-slate-400 italic">약이 없습니다.</div>';
+                return;
+            }
+            [...medications].sort((a, b) => a.time.localeCompare(b.time)).forEach(med => {
+                const isDone = med.lastNotified === todayStr;
+                const div = document.createElement('div');
+                div.className = `card p-5 flex items-center justify-between border-l-4 ${isDone ? 'done-card border-emerald-500' : 'border-indigo-500'}`;
+                div.innerHTML = `
+                    <div class="flex items-center gap-4">
+                        <div class="w-11 h-11 ${isDone ? 'bg-emerald-100 text-emerald-600' : 'bg-indigo-50 text-indigo-500'} rounded-2xl flex items-center justify-center">
+                            <i class="fa-solid ${isDone ? 'fa-check' : 'fa-pills'}"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold">${med.name}</h4>
+                            <span class="time-badge">${med.time}</span>
+                        </div>
+                    </div>
+                    <button onclick="deleteMed(${med.id})" class="text-slate-300 p-2"><i class="fa-solid fa-trash-can"></i></button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function deleteMed(id) {
+            medications = medications.filter(m => m.id !== id);
+            saveData();
+        }
+
+        function checkAlarms() {
+            const now = new Date();
+            const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            const todayStr = now.toLocaleDateString('en-CA');
+            medications.forEach(med => {
+                if (med.time === currentTime && med.lastNotified !== todayStr) {
+                    if (!document.getElementById('alarm-modal').classList.contains('active')) {
+                        currentAlarmMed = med;
+                        document.getElementById('alarm-pill-name').innerText = med.name;
+                        openModal('alarm-modal');
+                    }
+                }
+            });
+            updateNextReminderUI();
+        }
+
+        function confirmIntake() {
+            if(!currentAlarmMed) return;
+            const todayStr = new Date().toLocaleDateString('en-CA');
+            medications = medications.map(m => m.id === currentAlarmMed.id ? { ...m, lastNotified: todayStr } : m);
+            saveData();
+            
+            if (isKakaoLinked && Kakao.API) {
+                Kakao.API.request({
+                    url: '/v2/api/talk/memo/default/send',
+                    data: {
+                        template_object: {
+                            object_type: 'text',
+                            text: `[복용 완료] "${currentAlarmMed.name}" 약을 먹었습니다.`,
+                            link: { mobile_web_url: window.location.href, web_url: window.location.href }
+                        }
+                    },
+                    success: function(res) { console.log("Message Sent", res); },
+                    fail: function(err) { console.error("Message Sent Fail", err); }
+                });
+            }
+            closeModal('alarm-modal');
+        }
+
+        function updateNextReminderUI() {
+            const textEl = document.getElementById('next-reminder-text');
+            if(!textEl) return;
+            if(medications.length === 0) {
+                textEl.innerHTML = '<span class="text-2xl font-bold italic">등록된 약이 없습니다</span>';
+                return;
+            }
+            const now = new Date();
+            const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            let next = medications.filter(m => m.time > currentTime).sort((a,b)=>a.time.localeCompare(b.time))[0] 
+                       || medications.sort((a,b)=>a.time.localeCompare(b.time))[0];
+            textEl.innerHTML = `<span class="text-3xl font-bold">${next.time}</span><p class="text-sm opacity-90">${next.name}</p>`;
+        }
+
+        window.onload = initApp;
+    </script>
+</body>
+</html>
